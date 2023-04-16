@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -13,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	v1 "k8s.io/api/core/v1"
@@ -64,6 +67,9 @@ func (r *NodePoolResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
 				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"min_ready_nodes": schema.Int64Attribute{
 				Optional:            true,
@@ -72,7 +78,8 @@ func (r *NodePoolResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
-				Default: int64default.StaticInt64(1),
+				Default:    int64default.StaticInt64(1),
+				Validators: []validator.Int64{int64validator.AtLeast(1)},
 			},
 			"node_selector_key": schema.StringAttribute{
 				Optional:            true,
@@ -82,6 +89,9 @@ func (r *NodePoolResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					stringplanmodifier.UseStateForUnknown(),
 				},
 				Default: stringdefault.StaticString("cloud.google.com/gke-nodepool"),
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"node_selector_value": schema.StringAttribute{
 				Optional:            true,
@@ -89,24 +99,36 @@ func (r *NodePoolResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"ready_timeout": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Maximum time for waiting for nodes in a new node pool to be ready. Defaults to `300s`.",
 				Default:             stringdefault.StaticString("300s"),
+				Validators: []validator.String{
+					MinDuration(0),
+				},
 			},
 			"drain_timeout": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Timeout for node drain operations. Defaults to `300s`.",
 				Default:             stringdefault.StaticString("300s"),
+				Validators: []validator.String{
+					MinDuration(0),
+				},
 			},
 			"drain_wait": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Amount of time to wait after each node drain operation. Defaults to `60s`.",
 				Default:             stringdefault.StaticString("60s"),
+				Validators: []validator.String{
+					MinDuration(0),
+				},
 			},
 		},
 	}
@@ -117,7 +139,15 @@ func (r *NodePoolResource) Configure(_ context.Context, req resource.ConfigureRe
 		return
 	}
 
-	r.config = req.ProviderData.(*restclient.Config)
+	var ok bool
+	r.config, ok = req.ProviderData.(*restclient.Config)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unable to get kubernetes config",
+			"Unexpected error while fetching kubernetes config",
+		)
+		return
+	}
 
 	k8sClient, err := kubernetes.NewForConfig(r.config)
 	if err != nil {

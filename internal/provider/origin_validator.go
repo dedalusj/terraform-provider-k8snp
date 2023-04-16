@@ -63,7 +63,6 @@ func (v originValidator) ValidateString(_ context.Context, request validator.Str
 			fmt.Sprintf("Attribute %s has non allowed scheme %s, got: %s", request.Path, parsed.Scheme, value),
 		),
 	)
-	return
 }
 
 // Origin returns a validator which ensures that any configured
